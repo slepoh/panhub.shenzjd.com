@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <header class="hero">
-      <div class="hero__title">PanHub API 文档</div>
+      <div class="hero__title">盘搜 API 文档</div>
       <div class="hero__subtitle">网盘搜索服务 API 接口文档</div>
     </header>
 
@@ -11,7 +11,7 @@
         <h2 class="section__title">API 概述</h2>
         <div class="overview">
           <p>
-            PanHub API
+            盘搜 API
             提供了强大的网盘搜索功能，支持多个搜索源和插件。通过简单的 HTTP
             请求即可获取网盘资源信息。
           </p>
