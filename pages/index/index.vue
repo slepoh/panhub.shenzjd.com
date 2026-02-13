@@ -5,9 +5,9 @@
       <div class="hero-content">
         <div class="brand-badge" @click="fullReset" title="点击重置">
           <span class="brand-emoji">🔍</span>
-          <span class="brand-name">PanHub</span>
+          <span class="brand-name">盘搜</span>
         </div>
-        <h1 class="hero-title">全网最全的网盘搜索工具</h1>
+        <h1 class="hero-title">全网网盘资源搜索</h1>
         <p class="hero-description">
           聚合阿里云盘、夸克、百度网盘、115、迅雷等平台，实时检索各类分享链接与资源
         </p>
@@ -143,17 +143,17 @@ onMounted(async () => {
 
 // SEO 元数据
 useSeoMeta({
-  title: "PanHub - 全网最全的网盘搜索",
+  title: "盘搜 - 全网网盘资源搜索",
   description:
     "聚合阿里云盘、夸克、百度网盘、115、迅雷等平台，实时检索各类分享链接与资源，免费、快速、无广告。",
-  ogTitle: "PanHub - 全网最全的网盘搜索",
+  ogTitle: "盘搜 - 全网网盘资源搜索",
   ogDescription:
     "聚合阿里云盘、夸克、百度网盘、115、迅雷等平台，实时检索各类分享链接与资源，免费、快速、无广告。",
   ogType: "website",
-  ogSiteName: "PanHub",
+  ogSiteName: "盘搜",
   ogImage: siteUrl ? `${siteUrl}/og.svg` : "/og.svg",
   twitterCard: "summary_large_image",
-  twitterTitle: "PanHub - 全网最全的网盘搜索",
+  twitterTitle: "盘搜 - 全网网盘资源搜索",
   twitterDescription:
     "聚合阿里云盘、夸克、百度网盘、115、迅雷等平台，实时检索各类分享链接与资源，免费、快速、无广告。",
   twitterImage: siteUrl ? `${siteUrl}/og.svg` : "/og.svg",
@@ -165,7 +165,7 @@ useHead({
     {
       name: "keywords",
       content:
-        "网盘搜索, 阿里云盘搜索, 夸克网盘搜索, 百度网盘搜索, 115 网盘, 迅雷云盘, 资源搜索, 盘搜, PanHub",
+        "网盘搜索, 阿里云盘搜索, 夸克网盘搜索, 百度网盘搜索, 115 网盘, 迅雷云盘, 资源搜索, 盘搜, 盘搜",
     },
   ],
   script: [
