@@ -39,7 +39,8 @@ export class SearchService {
     );
 
     this.healthChecker = createPluginHealthChecker();
-    this.errorCollector = new ErrorCollector();    this.pluginManager = pluginManager;
+    this.errorCollector = new ErrorCollector();
+  }
 
   getPluginManager() {
     return this.pluginManager;
