@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import { MemoryCache } from "../cache/memoryCache";
+import { UnifiedCache, CacheNamespace } from "../cache/unifiedCache";
 import { safeExecute, fetchWithRetry } from "../utils/fetch";
 import type {
   MergedLinks,
@@ -21,13 +21,19 @@ export interface SearchServiceOptions {
 export class SearchService {
   private options: SearchServiceOptions;
   private pluginManager: PluginManager;
-  private tgCache = new MemoryCache<SearchResult[]>();
-  private pluginCache = new MemoryCache<SearchResult[]>();
+  private cache: UnifiedCache;
 
   constructor(options: SearchServiceOptions, pluginManager: PluginManager) {
     this.options = options;
     this.pluginManager = pluginManager;
-  }
+    this.cache = new UnifiedCache(
+      {
+        enabled: options.cacheEnabled,
+        ttlMinutes: options.cacheTtlMinutes,
+      },
+      "search"
+    );
+    this.pluginManager = pluginManager;
 
   getPluginManager() {
     return this.pluginManager;
@@ -146,7 +152,7 @@ export class SearchService {
 
     // 缓存检查
     if (!forceRefresh && cacheEnabled) {
-      const cached = this.tgCache.get(cacheKey);
+      const cached = this.cache.get(CacheNamespace.TG_SEARCH, cacheKey);
       if (cached.hit && cached.value) {
         return cached.value;
       }
@@ -222,7 +228,7 @@ export class SearchService {
 
     // 缓存结果
     if (cacheEnabled && results.length > 0) {
-      this.tgCache.set(cacheKey, results, cacheTtlMinutes * 60_000);
+      this.cache.set(CacheNamespace.TG_SEARCH, cacheKey, results);
     }
 
     return results;
@@ -243,7 +249,7 @@ export class SearchService {
     const { cacheEnabled, cacheTtlMinutes } = this.options;
 
     if (!forceRefresh && cacheEnabled) {
-      const cached = this.pluginCache.get(cacheKey);
+      const cached = this.cache.get(CacheNamespace.PLUGIN_SEARCH, cacheKey);
       if (cached.hit && cached.value) {
         return cached.value;
       }
@@ -319,7 +325,7 @@ export class SearchService {
     }
 
     if (cacheEnabled && merged.length > 0) {
-      this.pluginCache.set(cacheKey, merged, cacheTtlMinutes * 60_000);
+      this.cache.set(CacheNamespace.PLUGIN_SEARCH, cacheKey, merged);
     }
 
     return merged;
@@ -410,5 +416,17 @@ export class SearchService {
     const limitFn = pLimit(limit);
     const limitedTasks = tasks.map((task) => limitFn(task));
     return Promise.all(limitedTasks);
+  }
+
+  getCacheStats() {
+    return this.cache.getStats();
+  }
+
+  clearCache(namespace?: CacheNamespace) {
+    if (namespace) {
+      this.cache.clearNamespace(namespace);
+    } else {
+      this.cache.clearAll();
+    }
   }
 }
