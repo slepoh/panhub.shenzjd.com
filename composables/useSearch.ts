@@ -1,5 +1,78 @@
-import type { MergedLinks, GenericResponse, SearchResponse } from "~/server/core/types/models";
+import type {
+  MergedLink,
+  MergedLinks,
+  GenericResponse,
+  SearchResponse,
+  SearchResult,
+} from "~/server/core/types/models";
 import { ALL_PLUGIN_NAMES } from "~/config/plugins";
+
+/** 从 API 响应中提取 MergedLinks，兼容 merged_by_type、results 及扁平数组等多种格式 */
+function extractMergedFromResponse(data: SearchResponse | Record<string, any> | undefined): MergedLinks {
+  if (!data) return {};
+  // 1. 标准 merged_by_type
+  if (data.merged_by_type && typeof data.merged_by_type === "object") {
+    const m = data.merged_by_type as MergedLinks;
+    if (Object.keys(m).length > 0) return m;
+  }
+  // 2. results: SearchResult[] 或 MergedLink[]，需展开并分组
+  const results = data.results;
+  if (Array.isArray(results) && results.length > 0) {
+    const out: MergedLinks = {};
+    for (const r of results) {
+      const rAny = r as any;
+      // SearchResult 格式：有 links 数组
+      const links = rAny.links;
+      if (Array.isArray(links) && links.length > 0) {
+        const note = rAny.title || rAny.content || "";
+        const dt = rAny.datetime || "";
+        for (const link of links) {
+          const t = link.type || "others";
+          if (!out[t]) out[t] = [];
+          out[t].push({
+            url: link.url,
+            password: link.password || "",
+            note,
+            datetime: dt,
+            source: rAny.channel ? `tg:${rAny.channel}` : undefined,
+          });
+        }
+      } else if (rAny.url) {
+        // 扁平 MergedLink 格式
+        const t = rAny.type || "others";
+        if (!out[t]) out[t] = [];
+        out[t].push({
+          url: rAny.url,
+          password: rAny.password || "",
+          note: rAny.note || "",
+          datetime: rAny.datetime || "",
+          source: rAny.source,
+        });
+      }
+    }
+    return out;
+  }
+  // 3. 扁平数组（data 本身为数组，或 data.items / data.list 等）
+  const arr = Array.isArray(data) ? data : (data?.items ?? data?.list ?? data?.data);
+  if (Array.isArray(arr) && arr.length > 0) {
+    const out: MergedLinks = {};
+    for (const item of arr as MergedLink[]) {
+      if (item && item.url) {
+        const t = (item as any).type || "others";
+        if (!out[t]) out[t] = [];
+        out[t].push({
+          url: item.url,
+          password: item.password || "",
+          note: item.note || "",
+          datetime: item.datetime || "",
+          source: item.source,
+        });
+      }
+    }
+    return out;
+  }
+  return {};
+}
 
 export interface SearchOptions {
   apiBase: string;
@@ -161,18 +234,26 @@ export function useSearch() {
     // 收集所有搜索任务
     const searchTasks: Array<() => Promise<MergedLinks>> = [];
 
-    // 为每个插件创建独立的搜索任务
+    // 为每个插件创建独立的搜索任务（带 AbortController，支持重置/暂停时取消）
     for (const plugin of enabledPlugins) {
       const task = async () => {
+        if (mySeq !== searchSeq || state.value.paused) return {};
+        const ac = new AbortController();
+        activeControllers.push(ac);
         try {
           const extParam = JSON.stringify({ __plugin_timeout_ms: settings.pluginTimeoutMs });
           const response = await $fetch<GenericResponse<SearchResponse>>(
-            `${apiBase}/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=plugin&plugins=${plugin}&conc=${conc}&ext=${encodeURIComponent(extParam)}`
+            `${apiBase}/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=plugin&plugins=${plugin}&conc=${conc}&ext=${encodeURIComponent(extParam)}`,
+            { signal: ac.signal } as any
           );
-          return response.data?.merged_by_type || {};
-        } catch (error) {
+          return extractMergedFromResponse(response.data);
+        } catch (error: any) {
+          if (error?.name === "AbortError") return {};
           console.warn(`Plugin ${plugin} search failed:`, error);
           return {};
+        } finally {
+          const idx = activeControllers.indexOf(ac);
+          if (idx >= 0) activeControllers.splice(idx, 1);
         }
       };
       searchTasks.push(task);
@@ -183,15 +264,23 @@ export function useSearch() {
     for (let i = 0; i < enabledTgChannels.length; i += tgBatchSize) {
       const batch = enabledTgChannels.slice(i, i + tgBatchSize);
       const task = async () => {
+        if (mySeq !== searchSeq || state.value.paused) return {};
+        const ac = new AbortController();
+        activeControllers.push(ac);
         try {
           const extParam = JSON.stringify({ __plugin_timeout_ms: settings.pluginTimeoutMs });
           const response = await $fetch<GenericResponse<SearchResponse>>(
-            `${apiBase}/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=tg&channels=${batch.join(',')}&conc=${conc}&ext=${encodeURIComponent(extParam)}`
+            `${apiBase}/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=tg&channels=${batch.join(',')}&conc=${conc}&ext=${encodeURIComponent(extParam)}`,
+            { signal: ac.signal } as any
           );
-          return response.data?.merged_by_type || {};
-        } catch (error) {
+          return extractMergedFromResponse(response.data);
+        } catch (error: any) {
+          if (error?.name === "AbortError") return {};
           console.warn(`TG batch ${Math.floor(i / tgBatchSize)} search failed:`, error);
           return {};
+        } finally {
+          const idx = activeControllers.indexOf(ac);
+          if (idx >= 0) activeControllers.splice(idx, 1);
         }
       };
       searchTasks.push(task);
@@ -209,14 +298,18 @@ export function useSearch() {
     
     console.log('[performParallelSearch] 开始执行', searchTasks.length, '个搜索任务');
 
-    for (const task of limitedTasks) {
+    for (const limitedTask of limitedTasks) {
       if (mySeq !== searchSeq) {
         console.log('[performParallelSearch] 新搜索已开始，停止当前搜索');
         break;
       }
+      if (state.value.paused) {
+        console.log('[performParallelSearch] 用户已暂停，停止执行');
+        break;
+      }
 
       try {
-        const result = await task();
+        const result = await limitedTask;
         console.log('[performParallelSearch] 任务完成，结果类型数:', Object.keys(result).length);
         
         if (Object.keys(result).length > 0) {
@@ -273,9 +366,8 @@ export function useSearch() {
       
       // 每个请求完成后立即触发回调
       pluginPromise.then(result => {
-        if (result?.merged_by_type && onProgress) {
-          onProgress(result.merged_by_type);
-        }
+        const extracted = result ? extractMergedFromResponse(result) : {};
+        if (Object.keys(extracted).length > 0 && onProgress) onProgress(extracted);
       });
       
       resultPromises.push(pluginPromise);
@@ -300,9 +392,8 @@ export function useSearch() {
       
       // 每个请求完成后立即触发回调
       tgPromise.then(result => {
-        if (result?.merged_by_type && onProgress) {
-          onProgress(result.merged_by_type);
-        }
+        const extracted = result ? extractMergedFromResponse(result) : {};
+        if (Object.keys(extracted).length > 0 && onProgress) onProgress(extracted);
       });
       
       resultPromises.push(tgPromise);
@@ -312,9 +403,8 @@ export function useSearch() {
     const results = await Promise.all(resultPromises);
     let merged: MergedLinks = {};
     for (const r of results) {
-      if (r?.merged_by_type) {
-        merged = mergeMergedByType(merged, r.merged_by_type);
-      }
+      const extracted = r ? extractMergedFromResponse(r) : {};
+      if (Object.keys(extracted).length > 0) merged = mergeMergedByType(merged, extracted);
     }
     return merged;
   }
@@ -399,12 +489,10 @@ export function useSearch() {
         const resps = await Promise.all(reqs);
         for (const r of resps) {
           if (!r || mySeq !== searchSeq) continue;
-          if (r.merged_by_type) {
+          const extracted = extractMergedFromResponse(r);
+          if (Object.keys(extracted).length > 0) {
             const currentMerged = state.value.merged;
-            const newMerged = mergeMergedByType(
-              currentMerged,
-              r.merged_by_type
-            );
+            const newMerged = mergeMergedByType(currentMerged, extracted);
             setMerged(newMerged);
           }
         }
