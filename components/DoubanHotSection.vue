@@ -2,14 +2,13 @@
   <div v-if="!hasAnyData" class="hidden"></div>
 
   <div v-else class="douban-section">
-    <!-- 分类 Tabs - 始终可见 -->
+    <!-- 分类 Tabs - 始终可点击 -->
     <nav class="category-nav" role="tablist">
       <button
         v-for="cat in availableCategories"
         :key="cat.id"
-        :class="['tab-button', { 'is-loading': loading && selectedCategoryId === cat.id, 'is-active': selectedCategoryId === cat.id }]"
+        :class="['tab-button', { 'is-active': selectedCategoryId === cat.id }]"
         :aria-selected="selectedCategoryId === cat.id"
-        :aria-busy="loading && selectedCategoryId === cat.id"
         role="tab"
         @click="selectCategory(cat.id)"
       >
@@ -20,11 +19,21 @@
 
     <!-- 内容区域 -->
     <div class="content-area">
-      <!-- 初始加载 -->
-      <div v-if="loading && items.length === 0" class="initial-loading">
-        <div class="loading-spinner">
-          <div class="spinner-ring"></div>
-          <span>加载中…</span>
+      <!-- 骨架屏 Loading -->
+      <div v-if="loading && items.length === 0" class="skeleton-grid">
+        <div
+          v-for="i in 10"
+          :key="`skeleton-${i}`"
+          class="skeleton-card"
+          :style="{ animationDelay: `${i * 0.05}s` }"
+        >
+          <div class="skeleton-cover">
+            <div class="skeleton-shimmer"></div>
+          </div>
+          <div class="skeleton-info">
+            <div class="skeleton-title"></div>
+            <div class="skeleton-desc"></div>
+          </div>
         </div>
       </div>
 
@@ -77,7 +86,11 @@
           class="load-trigger"
         >
           <div v-if="loadingMore" class="loading-more">
-            <div class="spinner-small"></div>
+            <div class="spinner-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
             <span>加载更多…</span>
           </div>
         </div>
@@ -186,13 +199,17 @@ async function fetchCategoryData(categoryId: string, page: number, append = fals
 }
 
 async function selectCategory(categoryId: string) {
-  // 如果点击的是当前分类且有数据，不做处理
-  if (categoryId === selectedCategoryId.value && items.value.length > 0 && !loading.value) return;
+  // 如果点击的是当前分类且有数据且正在加载，不做处理
+  if (categoryId === selectedCategoryId.value && items.value.length > 0 && loading.value) return;
 
+  // 立即更新状态和清空内容，给用户即时反馈
   selectedCategoryId.value = categoryId;
   currentPage.value = 1;
   hasMore.value = true;
+  items.value = []; // 立即清空当前内容
+  loading.value = true; // 立即显示骨架屏
 
+  // 开始获取新数据
   await fetchCategoryData(categoryId, 1, false);
   await nextTick();
   setupLoadMoreObserver();
@@ -334,25 +351,6 @@ defineExpose({ init, refresh });
   box-shadow: 0 2px 8px rgba(15, 118, 110, 0.15);
 }
 
-.tab-button.is-loading {
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-.tab-button.is-loading::after {
-  content: '';
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--primary, #0f766e);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
 .tab-label {
   font-weight: 600;
 }
@@ -368,34 +366,96 @@ defineExpose({ init, refresh });
   min-height: 300px;
 }
 
-/* 初始加载 */
-.initial-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 300px;
-  padding: 40px 20px;
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border-light, #e5e7eb);
-  border-radius: 14px;
+/* 骨架屏 Loading */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
 }
 
-.loading-spinner {
+.skeleton-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  color: var(--text-secondary, #6b7280);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-light, #e5e7eb);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: skeleton-pulse 2s ease-in-out infinite;
 }
 
-.spinner-ring {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(15, 118, 110, 0.15);
-  border-top-color: var(--primary, #0f766e);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.skeleton-cover {
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-info {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skeleton-title {
+  height: 32px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #d1d5db 50%, #e5e7eb 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-desc {
+  height: 12px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite 0.2s;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* 网格容器 */
@@ -504,13 +564,36 @@ defineExpose({ init, refresh });
   font-size: 14px;
 }
 
-.spinner-small {
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--primary, #0f766e);
-  border-top-color: transparent;
+.spinner-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.spinner-dots span {
+  width: 8px;
+  height: 8px;
+  background: var(--primary, #0f766e);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: bounce 1.4s ease-in-out infinite both;
+}
+
+.spinner-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.spinner-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.6;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .end-message {
@@ -553,10 +636,6 @@ defineExpose({ init, refresh });
   display: none;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* 响应式 */
 @media (max-width: 640px) {
   .category-nav {
@@ -568,14 +647,10 @@ defineExpose({ init, refresh });
     font-size: 12px;
   }
 
+  .skeleton-grid,
   .grid-container {
     grid-template-columns: repeat(4, 1fr);
     gap: 10px;
-  }
-
-  .initial-loading {
-    padding: 30px 16px;
-    min-height: 240px;
   }
 
   .card-title {
@@ -616,9 +691,21 @@ defineExpose({ init, refresh });
     color: #5eead4;
   }
 
-  .initial-loading {
-    background: rgba(15, 23, 42, 0.5);
+  .skeleton-card {
+    background: rgba(30, 41, 59, 0.6);
     border-color: rgba(75, 85, 99, 0.4);
+  }
+
+  .skeleton-cover {
+    background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+  }
+
+  .skeleton-title {
+    background: linear-gradient(90deg, #4b5563 25%, #6b7280 50%, #4b5563 75%);
+  }
+
+  .skeleton-desc {
+    background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
   }
 
   .movie-card {
@@ -654,12 +741,9 @@ defineExpose({ init, refresh });
 /* 减少动画模式 */
 @media (prefers-reduced-motion: reduce) {
   .tab-button,
-  .movie-card {
+  .movie-card,
+  .skeleton-card {
     transition: none;
-  }
-
-  .spinner-ring,
-  .spinner-small {
     animation: none;
   }
 
@@ -676,6 +760,24 @@ defineExpose({ init, refresh });
 
   .card-fade-move {
     transition: none;
+  }
+
+  .skeleton-shimmer {
+    animation: none;
+  }
+
+  .skeleton-cover {
+    background: #f0f0f0;
+  }
+
+  .skeleton-title,
+  .skeleton-desc {
+    background: #e5e7eb;
+    animation: none;
+  }
+
+  .spinner-dots span {
+    animation: none;
   }
 }
 </style>
