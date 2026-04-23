@@ -178,10 +178,14 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
+          TAGS=""
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && TAGS="$TAGS -t $tag"
+          done < tags.txt
           docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $TAGS \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:latest
