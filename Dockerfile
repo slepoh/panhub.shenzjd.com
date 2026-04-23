@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # 构建阶段（无 native 依赖，用 Alpine 减小体积）
 FROM node:20-alpine AS builder
 WORKDIR /app

@@ -178,12 +178,12 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          TAGS=""
+          TAG_ARGS=""
           while IFS= read -r tag; do
-            [ -n "$tag" ] && TAGS="$TAGS -t $tag"
-          done < tags.txt
+            [ -n "$tag" ] && TAG_ARGS="$TAG_ARGS -t $tag"
+          done <<< "${{ steps.tags.outputs.list }}"
           docker buildx imagetools create \
-            $TAGS \
+            $TAG_ARGS \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
 
       - name: Inspect image
